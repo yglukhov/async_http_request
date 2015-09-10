@@ -1,9 +1,8 @@
 type Response* = tuple[status: string, body: string]
-type Handler = proc (data: Response)
+type Handler* = proc (data: Response)
 
 when not defined(js):
     import asyncdispatch, httpclient
-    import streams, marshal
     when defined(android):
         # For some reason pthread_t is not defined on android
         {.emit: """/*INCLUDESECTION*/
@@ -17,27 +16,10 @@ when not defined(js):
         body: string
         handler: Handler
 
-    proc storeToSharedBuffer[T](a: T): pointer =
-        let s = newStringStream()
-        store(s, a)
-        result = allocShared(s.data.len + sizeof(uint64))
-        cast[ptr uint64](result)[] = s.data.len.uint64
-        copyMem(cast[pointer](cast[int](result) + sizeof(uint64)), addr s.data[0], s.data.len)
-        s.close()
-
-    proc readFromSharedBuffer[T](p: pointer, res: var T) =
-        let l = cast[ptr uint64](p)[]
-        var str = newStringOfCap(l)
-        str.setLen(l)
-        copyMem(addr str[0], cast[pointer](cast[int](p) + sizeof(uint64)), l)
-        let s = newStringStream(str)
-        load(s, res)
-        s.close()
-
     proc ayncHTTPRequest(a: ThreadArg) {.thread.} =
         try:
             let resp = request(a.url, "http" & a.httpMethod, a.extraHeaders, a.body, sslContext = nil)
-            a.handler((resp.status, rest.body))
+            a.handler((resp.status, resp.body))
         except:
             echo "Exception caught: ", getCurrentExceptionMsg()
             echo getCurrentException().getStackTrace()
