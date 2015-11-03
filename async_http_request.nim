@@ -3,7 +3,7 @@ type Response* = tuple[status: string, body: string]
 type Handler* = proc (data: Response)
 
 when not defined(js):
-    import asyncdispatch, httpclient
+    import asyncdispatch, httpclient, threadpool
     when defined(android):
         # For some reason pthread_t is not defined on android
         {.emit: """/*INCLUDESECTION*/
@@ -12,29 +12,20 @@ when not defined(js):
 
     type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
 
-    type ThreadArg = object
-        url: string
-        httpMethod: string
-        extraHeaders: string
-        body: string
-        handler: ThreadedHandler
-        ctx: pointer
-
-    proc ayncHTTPRequest(a: ThreadArg) {.thread.} =
+    proc ayncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
         try:
-            let resp = request(a.url, "http" & a.httpMethod, a.extraHeaders, a.body, sslContext = nil)
-            a.handler((resp.status, resp.body), a.ctx)
+            let resp = request(url, "http" & httpMethod, extraHeaders, body, sslContext = nil)
+            handler((resp.status, resp.body), ctx)
         except:
             echo "Exception caught: ", getCurrentExceptionMsg()
             echo getCurrentException().getStackTrace()
 
     proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
         ## handler might not be called on the invoking thread
-        var t = Thread[ThreadArg].new()
         var extraHeaders = ""
         for h in headers:
             extraHeaders &= h[0] & ": " & h[1] & "\r\n"
-        createThread(t[], ayncHTTPRequest, ThreadArg(url: url, httpMethod: meth, extraHeaders: extraHeaders, body: body, handler: handler, ctx: ctx))
+        spawn ayncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
 
 when defined(js):
     proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
