@@ -1,9 +1,6 @@
 type Response* = tuple[status: string, body: string]
 
-when defined(js):
-    type Handler* = proc (data: Response)
-else:
-    type Handler* = proc (data: Response, ctx: pointer) {.nimcall.}
+type Handler* = proc (data: Response)
 
 when not defined(js):
     import asyncdispatch, httpclient
@@ -13,12 +10,14 @@ when not defined(js):
         #include <pthread.h>"""
         .}
 
+    type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
+
     type ThreadArg = object
         url: string
         httpMethod: string
         extraHeaders: string
         body: string
-        handler: Handler
+        handler: ThreadedHandler
         ctx: pointer
 
     proc ayncHTTPRequest(a: ThreadArg) {.thread.} =
@@ -29,7 +28,7 @@ when not defined(js):
             echo "Exception caught: ", getCurrentExceptionMsg()
             echo getCurrentException().getStackTrace()
 
-    proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler, ctx: pointer = nil) =
+    proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
         ## handler might not be called on the invoking thread
         var t = Thread[ThreadArg].new()
         var extraHeaders = ""
