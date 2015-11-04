@@ -28,13 +28,27 @@ when not defined(js):
         spawn ayncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
 
 when defined(js):
-    proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-        let cmeth : cstring = meth
-        let curl : cstring = url
-        var cbody : cstring
-        if not body.isNil: cbody = body
+    type
+        XMLHTTPRequest* = ref XMLHTTPRequestObj
+        XMLHTTPRequestObj {.importc.} = object
+            responseType*: cstring
 
-        let reqListener = proc (r: cstring) =
+    proc open*(r: XMLHTTPRequest, httpMethod, url: cstring) {.importcpp.}
+    proc send*(r: XMLHTTPRequest) {.importcpp.}
+    proc send*(r: XMLHTTPRequest, body: cstring) {.importcpp.}
+    proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc(e: ref RootObj)) {.importcpp.}
+    proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc()) {.importcpp.}
+
+    proc newXMLHTTPRequest*(): XMLHTTPRequest =
+        {.emit: """
+        if (window.XMLHttpRequest)
+            `result` = new XMLHttpRequest();
+        else
+            `result` = new ActiveXObject("Microsoft.XMLHTTP");
+        """.}
+
+    proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
+        let reqListener = proc (r: ref RootObj) =
             var cbody: cstring
             var cstatus: cstring
             {.emit: """
@@ -43,17 +57,14 @@ when defined(js):
             """.}
             handler(($cstatus,  $cbody))
 
-        {.emit: """
-        var oReq = new XMLHttpRequest();
-        oReq.responseType = "text";
-        oReq.addEventListener('load', `reqListener`);
-        oReq.open(`cmeth`, `curl`, true);
-        if (`cbody` === null) {
-            oReq.send();
-        } else {
-            oReq.send(`cbody`);
-        }
-        """.}
+        let oReq = newXMLHTTPRequest()
+        oReq.responseType = "text"
+        oReq.addEventListener("load", reqListener)
+        oReq.open(meth, url)
+        if body.isNil:
+            oReq.send()
+        else:
+            oReq.send(body)
 
     template sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: proc(body: string)) =
-        sendRequestThreaded(meth, url, body, headers, proc(r: Response) = handler(r.body))
+        sendRequest(meth, url, body, headers, proc(r: Response) = handler(r.body))
