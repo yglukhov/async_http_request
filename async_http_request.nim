@@ -38,6 +38,7 @@ when defined(js):
     proc send*(r: XMLHTTPRequest, body: cstring) {.importcpp.}
     proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc(e: ref RootObj)) {.importcpp.}
     proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc()) {.importcpp.}
+    proc setRequestHeader*(r: XMLHTTPRequest, header, value: cstring) {.importcpp.}
 
     proc newXMLHTTPRequest*(): XMLHTTPRequest =
         {.emit: """
@@ -60,7 +61,9 @@ when defined(js):
         let oReq = newXMLHTTPRequest()
         oReq.responseType = "text"
         oReq.addEventListener("load", reqListener)
-        oReq.open(meth, url)
+        oReq.open("POST", url)
+        for h in headers:
+            oReq.setRequestHeader(h[0], h[1])
         if body.isNil:
             oReq.send()
         else:
