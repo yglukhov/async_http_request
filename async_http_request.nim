@@ -22,7 +22,7 @@ when not defined(js):
 
     proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
         ## handler might not be called on the invoking thread
-        var extraHeaders = ""
+        var extraHeaders = "Content-Length: " & $(body.len) & "\r\n"
         for h in headers:
             extraHeaders &= h[0] & ": " & h[1] & "\r\n"
         spawn ayncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
