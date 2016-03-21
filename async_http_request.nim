@@ -61,7 +61,7 @@ when defined(js):
         let oReq = newXMLHTTPRequest()
         oReq.responseType = "text"
         oReq.addEventListener("load", reqListener)
-        oReq.open("POST", url)
+        oReq.open(meth, url)
         for h in headers:
             oReq.setRequestHeader(h[0], h[1])
         if body.isNil:
