@@ -12,20 +12,22 @@ when not defined(js):
 
     type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
 
-    proc ayncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
+    proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
         try:
             let resp = request(url, "http" & httpMethod, extraHeaders, body, sslContext = nil)
             handler((resp.status, resp.body), ctx)
         except:
-            echo "Exception caught: ", getCurrentExceptionMsg()
+            let msg = getCurrentExceptionMsg()
+            echo "Exception caught: ", msg
             echo getCurrentException().getStackTrace()
+            handler((msg, ""), ctx)
 
     proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
         ## handler might not be called on the invoking thread
-        var extraHeaders = "Content-Length: " & $(body.len) & "\r\n"
+        var extraHeaders = "Content-Length: " & $(body.len) & "\r\l"
         for h in headers:
-            extraHeaders &= h[0] & ": " & h[1] & "\r\n"
-        spawn ayncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
+            extraHeaders &= h[0] & ": " & h[1] & "\r\l"
+        spawn asyncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
 
 when defined(js):
     type
