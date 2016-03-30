@@ -24,7 +24,7 @@ when not defined(js):
 
     proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
         ## handler might not be called on the invoking thread
-        var extraHeaders = "Content-Length: " & $(body.len) & "\r\l"
+        var extraHeaders = "Content-Length: " & $(body.len) & "\r\lConnection: close\r\l"
         for h in headers:
             extraHeaders &= h[0] & ": " & h[1] & "\r\l"
         spawn asyncHTTPRequest(url, meth, extraHeaders, body, handler, ctx)
