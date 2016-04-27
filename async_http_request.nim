@@ -31,45 +31,45 @@ elif not defined(js):
             result &= h[0] & ": " & h[1] & "\r\l"
 
     when defined(asyncHttpRequestAsyncIO):
-        const kAsyncPollTimeout = 500
-    
-        var ch: Channel[tuple[r: Response, rp, re: pointer]]
+        var ch: Channel[tuple[r: Response, ctx: pointer]]
 
         open(ch)
 
-        proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, rp, re: pointer) =
+        type Ctx = ref object
+            handler: Handler
+
+        proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, ctx: pointer) =
             try:
                 let resp = request(url, "http" & httpMethod, extraHeaders, body, sslContext = nil)
-                ch.send(((resp.status, resp.body), rp, re))
+                ch.send(((resp.status, resp.body), ctx))
             except:
                 let msg = getCurrentExceptionMsg()
                 echo "Exception caught: ", msg
                 echo getCurrentException().getStackTrace()
-                ch.send(((msg, ""), rp, re))
+                ch.send(((msg, ""), ctx))
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-            let rp = rawProc(handler)
-            let re = rawEnv(handler)
-            #GC_ref(cast[ref RootObj](re))
-            spawn asyncHTTPRequest(url, meth, genHeaders(body, headers), body, rp, re)
-
-        proc closureFromRawProcAndEnv[T](rp, re: pointer): T =
-            {.emit: """
-            `result`->ClPrc = `rp`;
-            `result`->ClEnv = `re`;
-            """.}
+            let ctx = Ctx.new()
+            ctx.handler = handler
+            GC_ref(ctx)
+            spawn asyncHTTPRequest(url, meth, genHeaders(body, headers), body, cast[pointer](ctx))
 
         proc waitForEvents() {.async.} =
+            var sleepTimeout = 500
             while true:
                 if ch.peek() > 0:
                     let m = ch.recv()
-                    let rp = m.rp
-                    let re = m.re
-                    #GC_unref(cast[ref RootObj](re))
-                    let handler = closureFromRawProcAndEnv[proc(r: Response)](rp, re)
-                    handler(m.r)
+                    let ctx = cast[Ctx](m.ctx)
+                    GC_unref(ctx)
+                    ctx.handler(m.r)
+                    sleepTimeout = sleepTimeout div 2
+                    if sleepTimeout < 1: sleepTimeout = 1
                 else:
-                    await sleepAsync(kAsyncPollTimeout)
+                    if sleepTimeout < 500:
+                        sleepTimeout = int(float(sleepTimeout) * 1.5)
+                        if sleepTimeout > 500:
+                            sleepTimeout = 500
+                    await sleepAsync(sleepTimeout)
 
         asyncCheck waitForEvents()
     else:
