@@ -17,7 +17,7 @@ when defined(emscripten):
         echo "sendRequest"
 
 elif not defined(js):
-    import asyncdispatch, httpclient, threadpool
+    import asyncdispatch, httpclient
     when defined(android):
         # For some reason pthread_t is not defined on android
         {.emit:
@@ -25,55 +25,28 @@ elif not defined(js):
         #include <pthread.h>"""
         .}
 
-    proc genHeaders(body: string, headers: openarray[(string, string)]): string =
-        result = "Content-Length: " & $(body.len) & "\r\lConnection: close\r\l"
-        for h in headers:
-            result &= h[0] & ": " & h[1] & "\r\l"
-
     when defined(asyncHttpRequestAsyncIO):
-        var ch: Channel[tuple[r: Response, ctx: pointer]]
+        import strtabs
 
-        open(ch)
-
-        type Ctx = ref object
-            handler: Handler
-
-        proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, ctx: pointer) =
-            try:
-                let resp = request(url, "http" & httpMethod, extraHeaders, body, sslContext = nil)
-                ch.send(((resp.status, resp.body), ctx))
-            except:
-                let msg = getCurrentExceptionMsg()
-                echo "Exception caught: ", msg
-                echo getCurrentException().getStackTrace()
-                ch.send(((msg, ""), ctx))
+        proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string, handler: Handler) {.async.} =
+            let r = await cl.request(url, "http" & meth, body)
+            cl.close()
+            handler((r.status, r.body))
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-            let ctx = Ctx.new()
-            ctx.handler = handler
-            GC_ref(ctx)
-            spawn asyncHTTPRequest(url, meth, genHeaders(body, headers), body, cast[pointer](ctx))
-
-        proc waitForEvents() {.async.} =
-            var sleepTimeout = 500
-            while true:
-                if ch.peek() > 0:
-                    let m = ch.recv()
-                    let ctx = cast[Ctx](m.ctx)
-                    GC_unref(ctx)
-                    ctx.handler(m.r)
-                    sleepTimeout = sleepTimeout div 2
-                    if sleepTimeout < 1: sleepTimeout = 1
-                else:
-                    if sleepTimeout < 500:
-                        sleepTimeout = int(float(sleepTimeout) * 1.5)
-                        if sleepTimeout > 500:
-                            sleepTimeout = 500
-                    await sleepAsync(sleepTimeout)
-
-        asyncCheck waitForEvents()
+            var client = newAsyncHttpClient()
+            client.headers = newStringTable(headers)
+            client.headers["Content-Length"] = $body.len
+            client.headers["Connection"] = "close"
+            asyncCheck doAsyncRequest(client, meth, url, body, handler)
     else:
+        import threadpool
         type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
+
+        proc genHeaders(body: string, headers: openarray[(string, string)]): string =
+            result = "Content-Length: " & $(body.len) & "\r\lConnection: close\r\l"
+            for h in headers:
+                result &= h[0] & ": " & h[1] & "\r\l"
 
         proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
             try:
