@@ -7,14 +7,72 @@ type Response* = tuple[status: string, body: string]
 type Handler* = proc (data: Response)
 
 when defined(emscripten):
-    type em_async_wget2_onload_func = proc(p: pointer, s: cstring) {.cdecl.}
-    type em_async_wget2_onstatus_func = proc(p: pointer, s: cint) {.cdecl.}
-    proc emscripten_async_wget2(url, file, requesttype, param: cstring,
-        arg: pointer, onload: em_async_wget2_onload_func,
-        onerror, onprogress: em_async_wget2_onstatus_func): cint {.importc.}
+    import emscripten
+
+    type Context = ref object
+        handler: Handler
+        resp: Response
+
+    proc allocHttpResponse(hw: pointer, statusSize, bodySize: cint) {.EMSCRIPTEN_KEEPALIVE.} =
+        let ctx = cast[Context](hw)
+        ctx.resp.status = newString(statusSize)
+        ctx.resp.body = newString(bodySize)
+    proc getHttpResponseStatusPtr(hw: pointer): pointer {.EMSCRIPTEN_KEEPALIVE.} =
+        addr(cast[Context](hw).resp.status[0])
+    proc getHttpResponseBodyPtr(hw: pointer): pointer {.EMSCRIPTEN_KEEPALIVE.} =
+        addr(cast[Context](hw).resp.body[0])
+    proc onAsyncHttpRequestLoad(hw: pointer) {.EMSCRIPTEN_KEEPALIVE.} =
+        let ctx = cast[Context](hw)
+        ctx.handler(ctx.resp)
+        GC_unref(ctx)
 
     proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-        echo "sendRequest"
+        var h = ""
+        for kv in headers:
+            h &= kv[0]
+            h &= ":"
+            h &= kv[1]
+            h &= "\l"
+        var hw = Context.new()
+        hw.handler = handler
+        GC_ref(hw)
+
+        discard EM_ASM_INT("""
+        var meth = Pointer_stringify($0);
+        var url = Pointer_stringify($1);
+        var body = ($2 === 0) ? null : Pointer_stringify($2);
+        var h = Pointer_stringify($3);
+        var hw = $4;
+
+        var oReq;
+        if (window.XMLHttpRequest)
+            oReq = new XMLHttpRequest();
+        else
+            oReq = new ActiveXObject("Microsoft.XMLHTTP");
+        oReq.responseType = "arraybuffer";
+
+        oReq.open(meth, url);
+        var headers = h.split("\n");
+        for(var i = 0; i < headers.length; i++) {
+            if (headers[i].length != 0) {
+                var kv = headers[i].split(":");
+                oReq.setRequestHeader(kv[0], kv[1]);
+            }
+        }
+
+        oReq.addEventListener("load", function(e) {
+            var byteArray = new Uint8Array(oReq.response);
+            _allocHttpResponse(hw, 5, byteArray.length); // TODO: Complete Status!
+            var dataPtr = _getHttpResponseBodyPtr(hw);
+            HEAPU8.set(byteArray, dataPtr);
+            _onAsyncHttpRequestLoad(hw);
+        });
+        if (body === null)
+            oReq.send();
+        else
+            oReq.send(body);
+
+        """, meth.cstring, url.cstring, body.cstring, h.cstring, cast[pointer](hw))
 
 elif not defined(js):
     import asyncdispatch, httpclient
