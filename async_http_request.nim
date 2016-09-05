@@ -30,11 +30,9 @@ when defined(emscripten) or defined(js):
         let oReq = newXMLHTTPRequest()
         var reqListener: proc()
         reqListener = proc () =
-            try:
+            handleJSExceptions:
+                jsUnref(reqListener)
                 handler(($oReq.statusText,  $oReq.responseText))
-            finally:
-                discard
-            jsUnref(reqListener)
         jsRef(reqListener)
         oReq.responseType = "text"
         oReq.addEventListener("load", reqListener)
