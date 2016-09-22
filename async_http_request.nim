@@ -66,7 +66,7 @@ elif not defined(js):
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
             var client = newAsyncHttpClient()
-            client.headers = newStringTable(headers)
+            client.headers = newHttpHeaders(headers)
             client.headers["Content-Length"] = $body.len
             client.headers["Connection"] = "close"
             asyncCheck doAsyncRequest(client, meth, url, body, handler)
