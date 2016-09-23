@@ -26,6 +26,8 @@ when defined(emscripten) or defined(js):
     proc `responseType=`*(r: XMLHTTPRequest, t: cstring) {.jsimportProp.}
     proc response*(r: XMLHTTPRequest): JSObj {.jsimportProp.}
 
+    proc status*(r: XMLHTTPRequest): int {.jsimportProp.}
+
     proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
         let oReq = newXMLHTTPRequest()
         var reqListener: proc()
