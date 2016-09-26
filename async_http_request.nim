@@ -63,7 +63,7 @@ elif not defined(js):
         import strtabs
 
         proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string, handler: Handler) {.async.} =
-            let r = await cl.request(url, "http" & meth, body)
+            let r = await cl.request(url, meth, body)
             cl.close()
             handler((r.status, r.body))
 
@@ -84,7 +84,7 @@ elif not defined(js):
 
         proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
             try:
-                let resp = request(url, "http" & httpMethod, extraHeaders, body, sslContext = nil)
+                let resp = request(url, httpMethod, extraHeaders, body, sslContext = nil)
                 handler((resp.status, resp.body), ctx)
             except:
                 let msg = getCurrentExceptionMsg()
