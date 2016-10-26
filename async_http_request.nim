@@ -74,17 +74,22 @@ elif not defined(js):
             client.headers["Connection"] = "close"
             asyncCheck doAsyncRequest(client, meth, url, body, handler)
     else:
-        import threadpool
+        import threadpool, net
+
         type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
 
-        proc genHeaders(body: string, headers: openarray[(string, string)]): string =
-            result = "Content-Length: " & $(body.len) & "\r\lConnection: close\r\l"
-            for h in headers:
-                result &= h[0] & ": " & h[1] & "\r\l"
-
-        proc asyncHTTPRequest(url, httpMethod, extraHeaders, body: string, handler: ThreadedHandler, ctx: pointer) =
+        proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
             try:
-                let resp = request(url, httpMethod, extraHeaders, body, sslContext = nil)
+                var sslCtx: SslContext
+                when defined(ssl):
+                    sslCtx = newContext()
+                let client = newHttpClient(sslContext = sslCtx)
+                client.headers = newHttpHeaders(headers)
+                client.headers["Content-Length"] = $body.len
+                client.headers["Connection"] = "close"
+                let resp = client.request(url, httpMethod, body)
+                when defined(ssl):
+                    sslCtx.destroyContext()
                 handler((resp.status, resp.body), ctx)
             except:
                 let msg = getCurrentExceptionMsg()
@@ -94,4 +99,4 @@ elif not defined(js):
 
         proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
             ## handler might not be called on the invoking thread
-            spawn asyncHTTPRequest(url, meth, genHeaders(body, headers), body, handler, ctx)
+            spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx)
