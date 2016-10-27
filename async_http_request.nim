@@ -80,10 +80,12 @@ elif not defined(js):
 
         proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
             try:
-                var sslCtx: SslContext
                 when defined(ssl):
-                    sslCtx = newContext()
-                let client = newHttpClient(sslContext = sslCtx)
+                    let sslCtx = newContext()
+                    let client = newHttpClient(sslContext = sslCtx)
+                else:
+                    let client = newHttpClient()
+
                 client.headers = newHttpHeaders(headers)
                 client.headers["Content-Length"] = $body.len
                 client.headers["Connection"] = "close"
