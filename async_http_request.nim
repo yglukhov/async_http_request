@@ -84,7 +84,7 @@ elif not defined(js):
                     let sslCtx = newContext()
                     let client = newHttpClient(sslContext = sslCtx)
                 else:
-                    let client = newHttpClient()
+                    let client = newHttpClient(sslContext = nil)
 
                 client.headers = newHttpHeaders(headers)
                 client.headers["Content-Length"] = $body.len
