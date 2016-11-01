@@ -81,7 +81,10 @@ elif not defined(js):
         proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    let sslCtx = newContext()
+                    when defined(windows):
+                        let sslCtx = newContext(verifyMode = CVerifyNone)
+                    else:
+                        let sslCtx = newContext()
                     let client = newHttpClient(sslContext = sslCtx)
                 else:
                     let client = newHttpClient(sslContext = nil)
