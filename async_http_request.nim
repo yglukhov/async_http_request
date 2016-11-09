@@ -2,7 +2,7 @@
 # run nim with -d:asyncHttpRequestAsyncIO to enable sendRequest proc, which will call out to asyncio
 # loop on the main thread
 
-type Response* = tuple[status: string, body: string]
+type Response* = tuple[statusCode: int, status: string, body: string]
 
 type Handler* = proc (data: Response)
 
@@ -35,7 +35,7 @@ when defined(emscripten) or defined(js):
         reqListener = proc () =
             handleJSExceptions:
                 jsUnref(reqListener)
-                handler(($oReq.statusText,  $oReq.responseText))
+                handler((oReq.status, $oReq.statusText,  $oReq.responseText))
         jsRef(reqListener)
         oReq.responseType = "text"
         oReq.addEventListener("load", reqListener)
@@ -51,13 +51,10 @@ when defined(emscripten) or defined(js):
         sendRequest(meth, url, body, headers, proc(r: Response) = handler(r.body))
 
 elif not defined(js):
-    import asyncdispatch, httpclient
-    when defined(android):
-        # For some reason pthread_t is not defined on android
-        {.emit:
-        """/*INCLUDESECTION*/
-        #include <pthread.h>"""
-        .}
+    import asyncdispatch, httpclient, parseutils
+
+    proc parseStatusCode(s: string): int {.inline.} =
+        discard parseInt(s, result)
 
     when defined(asyncHttpRequestAsyncIO):
         import strtabs
@@ -65,7 +62,7 @@ elif not defined(js):
         proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string, handler: Handler) {.async.} =
             let r = await cl.request(url, meth, body)
             cl.close()
-            handler((r.status, r.body))
+            handler((parseStatusCode(r.status), r.status, r.body))
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
             var client = newAsyncHttpClient()
@@ -81,7 +78,7 @@ elif not defined(js):
         proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    when defined(windows):
+                    when defined(windows) or defined(android):
                         let sslCtx = newContext(verifyMode = CVerifyNone)
                     else:
                         let sslCtx = newContext()
@@ -95,12 +92,10 @@ elif not defined(js):
                 let resp = client.request(url, httpMethod, body)
                 when defined(ssl):
                     sslCtx.destroyContext()
-                handler((resp.status, resp.body), ctx)
+                handler((parseStatusCode(resp.status), resp.status, resp.body), ctx)
             except:
                 let msg = getCurrentExceptionMsg()
-                echo "Exception caught: ", msg
-                echo getCurrentException().getStackTrace()
-                handler((msg, ""), ctx)
+                handler((-1, "Exception caught: " & msg, getCurrentException().getStackTrace()), ctx)
 
         proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
             ## handler might not be called on the invoking thread
