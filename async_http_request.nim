@@ -90,6 +90,7 @@ elif not defined(js):
                 client.headers["Content-Length"] = $body.len
                 client.headers["Connection"] = "close"
                 let resp = client.request(url, httpMethod, body)
+                client.close()
                 when defined(ssl):
                     sslCtx.destroyContext()
                 handler((parseStatusCode(resp.status), resp.status, resp.body), ctx)
