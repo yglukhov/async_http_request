@@ -41,7 +41,8 @@ when defined(emscripten) or defined(js):
         oReq.addEventListener("load", reqListener)
         oReq.open(meth, url)
         for h in headers:
-            oReq.setRequestHeader(h[0], h[1])
+            if h[1].len > 0:
+                oReq.setRequestHeader(h[0], h[1])
         if body.isNil:
             oReq.send()
         else:
