@@ -37,9 +37,9 @@ when defined(emscripten) or defined(js):
                 jsUnref(reqListener)
                 handler((oReq.status, $oReq.statusText,  $oReq.responseText))
         jsRef(reqListener)
-        oReq.responseType = "text"
         oReq.addEventListener("load", reqListener)
         oReq.open(meth, url)
+        oReq.responseType = "text"
         for h in headers:
             oReq.setRequestHeader(h[0], h[1])
         if body.isNil:
