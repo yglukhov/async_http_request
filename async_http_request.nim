@@ -38,6 +38,7 @@ when defined(emscripten) or defined(js):
                 handler((oReq.status, $oReq.statusText,  $oReq.responseText))
         jsRef(reqListener)
         oReq.addEventListener("load", reqListener)
+        oReq.addEventListener("error", reqListener)
         oReq.open(meth, url)
         oReq.responseType = "text"
         for h in headers:
