@@ -80,7 +80,7 @@ elif not defined(js):
         proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    when defined(windows) or defined(android):
+                    when defined(windows) or defined(linux):
                         let sslCtx = newContext(verifyMode = CVerifyNone)
                     else:
                         let sslCtx = newContext()
