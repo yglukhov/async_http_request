@@ -43,7 +43,7 @@ when defined(emscripten) or defined(js):
         oReq.responseType = "text"
         for h in headers:
             oReq.setRequestHeader(h[0], h[1])
-        if body.isNil:
+        if body.len == 0:
             oReq.send()
         else:
             oReq.send(body)
