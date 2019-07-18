@@ -52,7 +52,27 @@ when defined(emscripten) or defined(js):
         sendRequest(meth, url, body, headers, proc(r: Response) = handler(r.body))
 
 elif not defined(js):
-    import asyncdispatch, httpclient, parseutils
+    import asyncdispatch, httpclient, parseutils, uri
+
+    type AsyncHttpRequestError* = object of Exception
+
+    when defined(ssl):
+        import net
+    else:
+        type SSLContext = ref object
+    var defaultSslContext {.threadvar.}: SSLContext
+
+    proc getDefaultSslContext(): SSLContext =
+        when defined(ssl):
+            if defaultSslContext.isNil:
+                defaultSslContext =
+                    when defined(windows) or defined(linux):
+                        newContext(verifyMode = CVerifyNone)
+                    else:
+                        newContext()
+                if defaultSslContext.isNil:
+                    raise newException(AsyncHttpRequestError, "Unable to initialize SSL context.")
+        result = defaultSslContext
 
     proc parseStatusCode(s: string): int {.inline.} =
         discard parseInt(s, result)
@@ -66,40 +86,50 @@ elif not defined(js):
             let rBody = await r.body
             handler((statusCode: parseStatusCode(r.status), status: r.status, body: rBody))
 
-        proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-            var client = newAsyncHttpClient()
+        proc doSendRequest(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext, handler: Handler) =
+            when defined(ssl):
+                var client = newAsyncHttpClient(sslContext = sslContext)
+            else:
+                if url.parseUri.scheme == "https":
+                    raise newException(AsyncHttpRequestError, "SSL support is not available. Compile with -d:ssl to enable.")
+                var client = newAsyncHttpClient()
+
             client.headers = newHttpHeaders(headers)
             client.headers["Content-Length"] = $body.len
             client.headers["Connection"] = "close"
             asyncCheck doAsyncRequest(client, meth, url, body, handler)
+
+        proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
+            doSendRequest(meth, url, body, headers, getDefaultSslContext(), handler)
+
+        proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext, handler: Handler) =
+            doSendRequest(meth, url, body, headers, sslContext, handler)
     else:
         import threadpool, net
 
         type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
 
-        proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler, ctx: pointer) {.gcsafe.}=
+        proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler,
+                              ctx: pointer, sslContext: SSLContext) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    when defined(windows) or defined(linux):
-                        let sslCtx = newContext(verifyMode = CVerifyNone)
-                    else:
-                        let sslCtx = newContext()
-                    let client = newHttpClient(sslContext = sslCtx)
+                    var client = newAsyncHttpClient(sslContext = sslContext)
                 else:
-                    let client = newHttpClient(sslContext = nil)
+                    if url.parseUri.scheme == "https":
+                        raise newException(AsyncHttpRequestError, "SSL support is not available. Compile with -d:ssl to enable.")
+                    var client = newAsyncHttpClient()
 
                 client.headers = newHttpHeaders(headers)
                 client.headers["Content-Length"] = $body.len
                 client.headers["Connection"] = "close"
                 let resp = client.request(url, httpMethod, body)
                 client.close()
-                when defined(ssl):
-                    sslCtx.destroyContext()
                 handler((parseStatusCode(resp.status), resp.status, resp.body), ctx)
             except:
                 let msg = getCurrentExceptionMsg()
                 handler((-1, "Exception caught: " & msg, getCurrentException().getStackTrace()), ctx)
 
-        proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler, ctx: pointer = nil) =
+        proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler,
+                                  ctx: pointer = nil, sslContext: SSLContext = getDefaultSslContext()) =
             ## handler might not be called on the invoking thread
-            spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx)
+            spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx, sslContext)
