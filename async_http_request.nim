@@ -113,11 +113,11 @@ elif not defined(js):
                               ctx: pointer, sslContext: SSLContext) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    var client = newAsyncHttpClient(sslContext = sslContext)
+                    var client = newHttpClient(sslContext = sslContext)
                 else:
                     if url.parseUri.scheme == "https":
                         raise newException(AsyncHttpRequestError, "SSL support is not available. Compile with -d:ssl to enable.")
-                    var client = newAsyncHttpClient()
+                    var client = newHttpClient()
 
                 client.headers = newHttpHeaders(headers)
                 client.headers["Content-Length"] = $body.len
