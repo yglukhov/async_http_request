@@ -43,7 +43,7 @@ when defined(emscripten) or defined(js):
         oReq.responseType = "text"
         for h in headers:
             oReq.setRequestHeader(h[0], h[1])
-        if body.isNil:
+        if body.len() == 0:
             oReq.send()
         else:
             oReq.send(body)
@@ -62,8 +62,8 @@ elif not defined(js):
 
         proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string, handler: Handler) {.async.} =
             let r = await cl.request(url, meth, body)
-            cl.close()
             let rBody = await r.body
+            cl.close()
             handler((statusCode: parseStatusCode(r.status), status: r.status, body: rBody))
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
