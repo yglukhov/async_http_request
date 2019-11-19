@@ -5,6 +5,7 @@
 type Response* = tuple[statusCode: int, status: string, body: string]
 
 type Handler* = proc (data: Response)
+type ErrorHandler* = proc (e: ref Exception)
 
 when defined(emscripten) or defined(js):
     import jsbind
@@ -80,13 +81,25 @@ elif not defined(js):
     when defined(asyncHttpRequestAsyncIO):
         import strtabs
 
-        proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string, handler: Handler) {.async.} =
-            let r = await cl.request(url, meth, body)
-            let rBody = await r.body
-            cl.close()
+        proc doAsyncRequest(cl: AsyncHttpClient, meth, url, body: string,
+                            handler: Handler, onError: ErrorHandler) {.async.} =
+            var r: AsyncResponse
+            var rBody: string
+            try:
+                r = await cl.request(url, meth, body)
+                rBody = await r.body
+                cl.close()
+            except Exception as e:
+                if onError != nil:
+                    onError(e)
+                else:
+                    raise e
+            
             handler((statusCode: parseStatusCode(r.status), status: r.status, body: rBody))
 
-        proc doSendRequest(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext, handler: Handler) =
+        proc doSendRequest(meth, url, body: string, headers: openarray[(string, string)],
+                           sslContext: SSLContext,
+                           handler: Handler, onError: ErrorHandler) =
             when defined(ssl):
                 var client = newAsyncHttpClient(sslContext = sslContext)
             else:
@@ -97,13 +110,21 @@ elif not defined(js):
             client.headers = newHttpHeaders(headers)
             client.headers["Content-Length"] = $body.len
             client.headers["Connection"] = "close"
-            asyncCheck doAsyncRequest(client, meth, url, body, handler)
+            asyncCheck doAsyncRequest(client, meth, url, body, handler, onError)
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
-            doSendRequest(meth, url, body, headers, getDefaultSslContext(), handler)
+            doSendRequest(meth, url, body, headers, getDefaultSslContext(), handler, nil)
 
         proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext, handler: Handler) =
-            doSendRequest(meth, url, body, headers, sslContext, handler)
+            doSendRequest(meth, url, body, headers, sslContext, handler, nil)
+
+        proc sendRequestWithErrorHandler*(meth, url, body: string, headers: openarray[(string, string)],
+                                          onSuccess: Handler, onError: ErrorHandler) =
+            doSendRequest(meth, url, body, headers, getDefaultSslContext(), onSuccess, onError)
+
+        proc sendRequestWithErrorHandler*(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext,
+                                          onSuccess: Handler, onError: ErrorHandler) =
+            doSendRequest(meth, url, body, headers, sslContext, onSuccess, onError)
     else:
         import threadpool, net
 
