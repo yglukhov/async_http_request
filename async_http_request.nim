@@ -89,13 +89,12 @@ elif not defined(js):
                 r = await cl.request(url, meth, body)
                 rBody = await r.body
                 cl.close()
+                handler((statusCode: parseStatusCode(r.status), status: r.status, body: rBody))
             except Exception as e:
                 if onError != nil:
                     onError(e)
                 else:
                     raise e
-            
-            handler((statusCode: parseStatusCode(r.status), status: r.status, body: rBody))
 
         proc doSendRequest(meth, url, body: string, headers: openarray[(string, string)],
                            sslContext: SSLContext,
