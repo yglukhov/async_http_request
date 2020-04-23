@@ -124,7 +124,7 @@ elif not defined(js):
         proc sendRequestWithErrorHandler*(meth, url, body: string, headers: openarray[(string, string)], sslContext: SSLContext,
                                           onSuccess: Handler, onError: ErrorHandler) =
             doSendRequest(meth, url, body, headers, sslContext, onSuccess, onError)
-    else:
+    elif compileOption("threads"):
         import threadpool, net
 
         type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
@@ -153,3 +153,5 @@ elif not defined(js):
                                   ctx: pointer = nil, sslContext: SSLContext = getDefaultSslContext()) =
             ## handler might not be called on the invoking thread
             spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx, sslContext)
+    else:
+        {.warning: "async_http_requests requires either --threads:on or -d:asyncHttpRequestAsyncIO".}
