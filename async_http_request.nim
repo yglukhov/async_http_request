@@ -67,7 +67,7 @@ elif not defined(js):
         when defined(ssl):
             if defaultSslContext.isNil:
                 defaultSslContext =
-                    when defined(windows) or defined(linux):
+                    when defined(windows) or defined(linux) or defined(ios):
                         newContext(verifyMode = CVerifyNone)
                     else:
                         newContext()
