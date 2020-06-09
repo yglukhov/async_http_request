@@ -130,10 +130,10 @@ elif not defined(js):
         type ThreadedHandler* = proc(r: Response, ctx: pointer) {.nimcall.}
 
         proc asyncHTTPRequest(url, httpMethod, body: string, headers: seq[(string, string)], handler: ThreadedHandler,
-                              ctx: pointer, sslContext: SSLContext) {.gcsafe.}=
+                              ctx: pointer) {.gcsafe.}=
             try:
                 when defined(ssl):
-                    var client = newHttpClient(sslContext = sslContext)
+                    var client = newHttpClient(sslContext = getDefaultSslContext())
                 else:
                     if url.parseUri.scheme == "https":
                         raise newException(AsyncHttpRequestError, "SSL support is not available. Compile with -d:ssl to enable.")
@@ -150,8 +150,8 @@ elif not defined(js):
                 handler((-1, "Exception caught: " & msg, getCurrentException().getStackTrace()), ctx)
 
         proc sendRequestThreaded*(meth, url, body: string, headers: openarray[(string, string)], handler: ThreadedHandler,
-                                  ctx: pointer = nil, sslContext: SSLContext = getDefaultSslContext()) =
+                                  ctx: pointer = nil) =
             ## handler might not be called on the invoking thread
-            spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx, sslContext)
+            spawn asyncHTTPRequest(url, meth, body, @headers, handler, ctx)
     else:
         {.warning: "async_http_requests requires either --threads:on or -d:asyncHttpRequestAsyncIO".}
