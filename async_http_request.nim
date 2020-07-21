@@ -141,7 +141,7 @@ elif not defined(js):
 
                 client.headers = newHttpHeaders(headers)
                 client.headers["Content-Length"] = $body.len
-                client.headers["Connection"] = "close"
+                # client.headers["Connection"] = "close" # This triggers nim bug #9867
                 let resp = client.request(url, httpMethod, body)
                 client.close()
                 handler((parseStatusCode(resp.status), resp.status, resp.body), ctx)
