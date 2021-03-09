@@ -59,7 +59,6 @@ when defined(emscripten) or defined(js):
         if body.len == 0:
             oReq.send()
         else:
-            # oReq.send(body)
             oReq.sendBinary(body)
 
     template sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: proc(body: string)) =
