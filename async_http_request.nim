@@ -9,6 +9,9 @@ type ErrorHandler* = proc (e: ref Exception)
 
 when defined(emscripten) or defined(js):
     import jsbind
+    when defined(emscripten):
+        import jsbind/emscripten
+
     type
         XMLHTTPRequest* = ref object of JSObj
 
@@ -17,6 +20,15 @@ when defined(emscripten) or defined(js):
     proc open*(r: XMLHTTPRequest, httpMethod, url: cstring) {.jsimport.}
     proc send*(r: XMLHTTPRequest) {.jsimport.}
     proc send*(r: XMLHTTPRequest, body: cstring) {.jsimport.}
+
+    proc sendBinary(r: XMLHTTPRequest, data: string) =
+        when defined(emscripten):
+            discard EM_ASM_INT("""
+                var a = new Uint8Array(HEAP8.buffer, $1, $2);
+                _nimem_o[$0].send(a);
+            """, r.p, unsafeAddr data[0], data.len.cint)
+        else:
+            r.send(data) # todo: implement js target
 
     proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc()) {.jsimport.}
     proc setRequestHeader*(r: XMLHTTPRequest, header, value: cstring) {.jsimport.}
@@ -47,7 +59,7 @@ when defined(emscripten) or defined(js):
         if body.len == 0:
             oReq.send()
         else:
-            oReq.send(body)
+            oReq.sendBinary(body)
 
     template sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: proc(body: string)) =
         sendRequest(meth, url, body, headers, proc(r: Response) = handler(r.body))
