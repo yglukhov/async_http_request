@@ -4,8 +4,8 @@
 
 type Response* = tuple[statusCode: int, status: string, body: string]
 
-type Handler* = proc (data: Response)
-type ErrorHandler* = proc (e: ref Exception)
+type Handler* = proc (data: Response) {.gcsafe.}
+type ErrorHandler* = proc (e: ref Exception) {.gcsafe.}
 
 when defined(emscripten) or defined(js):
     import jsbind
