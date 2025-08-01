@@ -1,15 +1,14 @@
 # When compiled to native target, async_http_request will not provide sendRequest proc by default.
 # run nim with -d:asyncHttpRequestAsyncIO to enable sendRequest proc, which will call out to asyncio
 # loop on the main thread
-
 type Response* = tuple[statusCode: int, status: string, body: string]
 
 type Handler* = proc (data: Response) {.gcsafe.}
 type ErrorHandler* = proc (e: ref Exception) {.gcsafe.}
 
-when defined(emscripten) or defined(js):
+when defined(emscripten) or defined(js) or defined(wasm):
     import jsbind
-    when defined(emscripten):
+    when defined(emscripten) or defined(wasm):
         import jsbind/emscripten
 
     type
