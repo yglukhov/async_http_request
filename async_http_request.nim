@@ -6,59 +6,49 @@ type Response* = tuple[statusCode: int, status: string, body: string]
 type Handler* = proc (data: Response) {.gcsafe.}
 type ErrorHandler* = proc (e: ref Exception) {.gcsafe.}
 
-when defined(emscripten) or defined(js) or defined(wasm):
-    import jsbind
-    when defined(emscripten) or defined(wasm):
-        import jsbind/emscripten
-
+when defined(wasm):
+    import wasmrt
     type
-        XMLHTTPRequest* = ref object of JSObj
+        XMLHTTPRequest* {.externref.} = object of JSObject
 
-    proc newXMLHTTPRequest*(): XMLHTTPRequest {.jsimportgWithName: "function(){return (window.XMLHttpRequest)?new XMLHttpRequest():new ActiveXObject('Microsoft.XMLHTTP')}".}
+    proc newXMLHTTPRequest*(): XMLHTTPRequest {.importwasmf: "new XMLHttpRequest".}
 
-    proc open*(r: XMLHTTPRequest, httpMethod, url: cstring) {.jsimport.}
-    proc send*(r: XMLHTTPRequest) {.jsimport.}
-    proc send*(r: XMLHTTPRequest, body: cstring) {.jsimport.}
+    proc open*(r: XMLHTTPRequest, httpMethod, url: JSString) {.importwasmm.}
+    proc send*(r: XMLHTTPRequest) {.importwasmm.}
+    proc send*(r: XMLHTTPRequest, body: JSString) {.importwasmm.}
 
-    proc sendBinary(r: XMLHTTPRequest, data: string) =
-        when defined(emscripten):
-            discard EM_ASM_INT("""
-                var a = new Uint8Array(HEAP8.buffer, $1, $2);
-                _nimem_o[$0].send(a);
-            """, r.p, unsafeAddr data[0], data.len.cint)
-        else:
-            r.send(data) # todo: implement js target
+    proc uint8MemSlice(s: pointer, length: uint32): JSObject {.importwasmexpr: "new Uint8Array(_nima, $0, $1)".}
+    proc uint8MemSlice(c: openarray[char]): JSObject {.inline.} =
+      uint8MemSlice(addr c, c.len.uint32)
+    proc send*(r: XMLHTTPRequest, body: JSObject) {.importwasmm.}
 
-    proc addEventListener*(r: XMLHTTPRequest, event: cstring, listener: proc()) {.jsimport.}
-    proc setRequestHeader*(r: XMLHTTPRequest, header, value: cstring) {.jsimport.}
+    proc addEventListener*(r: XMLHTTPRequest, event: JSString, listener: proc(e: JSObject, ctx: pointer) {.cdecl.}, ctx: pointer) {.importwasmraw: "$0.addEventListener($1, e => $2(e, $3))".}
+    proc setRequestHeader*(r: XMLHTTPRequest, header, value: JSString) {.importwasmm.}
 
-    proc responseText*(r: XMLHTTPRequest): jsstring {.jsimportProp.}
-    proc statusText*(r: XMLHTTPRequest): jsstring {.jsimportProp.}
+    proc responseText*(r: XMLHTTPRequest): JSString {.importwasmp.}
+    proc statusText*(r: XMLHTTPRequest): JSString {.importwasmp.}
 
-    proc `responseType=`*(r: XMLHTTPRequest, t: cstring) {.jsimportProp.}
-    proc response*(r: XMLHTTPRequest): JSObj {.jsimportProp.}
+    proc `responseType=`*(r: XMLHTTPRequest, t: JSString) {.importwasmp.}
+    proc response*(r: XMLHTTPRequest): JSObject {.importwasmp.}
 
-    proc status*(r: XMLHTTPRequest): int {.jsimportProp.}
-    proc readyState*(r: XMLHTTPRequest): int {.jsimportProp.}
+    proc status*(r: XMLHTTPRequest): int {.importwasmp.}
+    proc readyState*(r: XMLHTTPRequest): int {.importwasmp.}
 
     proc sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: Handler) =
         let oReq = newXMLHTTPRequest()
         var reqListener: proc()
         reqListener = proc () =
-            handleJSExceptions:
-                jsUnref(reqListener)
-                handler((oReq.status, $oReq.statusText,  $oReq.responseText))
-        jsRef(reqListener)
-        oReq.addEventListener("load", reqListener)
-        oReq.addEventListener("error", reqListener)
+            # handleJSExceptions:
+            # GC_unref(reqListener)
+            handler((oReq.status, $oReq.statusText,  $oReq.responseText))
+        # GC_ref(reqListener)
+        # oReq.addEventListener("load", reqListener)
+        # oReq.addEventListener("error", reqListener)
         oReq.open(meth, url)
         oReq.responseType = "text"
         for h in headers:
             oReq.setRequestHeader(h[0], h[1])
-        if body.len == 0:
-            oReq.send()
-        else:
-            oReq.sendBinary(body)
+        oReq.send(uint8MemSlice(body))
 
     template sendRequest*(meth, url, body: string, headers: openarray[(string, string)], handler: proc(body: string)) =
         sendRequest(meth, url, body, headers, proc(r: Response) = handler(r.body))
